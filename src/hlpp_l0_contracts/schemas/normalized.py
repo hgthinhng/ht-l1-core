@@ -128,6 +128,61 @@ class FundamentalsQuarterly(HlppNormalizedBase):
     bvps: float | None = None
     roa: float | None = None
 
+    # Per-share recompute audit columns (P11 Phương án A, hlpp_pipelines.l1b.
+    # pershare_recompute; general/bank/securities/insurance -- excluded for fund,
+    # whose per-share economics are NAV/unit-based). eps_basic/bvps/roe/roa above
+    # are COALESCED: field_recomputed when the recompute's own inputs (NPAT/
+    # equity/assets/shares_outstanding_pit) resolved, else field_vendor unmodified
+    # -- a resolve-miss on this arc's own inputs never blanks a real vendor value.
+    eps_basic_vendor: float | None = Field(
+        None, description="Vendor-reported eps_basic, preserved unmodified for audit (P11 coalesce)"
+    )
+    bvps_vendor: float | None = Field(
+        None, description="Vendor-reported bvps, preserved unmodified for audit (P11 coalesce)"
+    )
+    roe_vendor: float | None = Field(
+        None, description="Vendor-reported roe, preserved unmodified for audit (P11 coalesce)"
+    )
+    roa_vendor: float | None = Field(
+        None, description="Vendor-reported roa, preserved unmodified for audit (P11 coalesce)"
+    )
+    eps_diluted_recomputed: float | None = Field(
+        None,
+        description=(
+            "Always null -- eps_diluted is never recomputed (no dilutive-instrument "
+            "data anywhere in the lake for any surface); vendor eps_diluted passes "
+            "through completely untouched. Kept as an explicit audit column per the "
+            "coalesce convention (P11 point 3)."
+        ),
+    )
+    shares_outstanding_pit: float | None = Field(
+        None,
+        description=(
+            "PIT-per-period shares outstanding used for the eps_basic/bvps recompute, "
+            "resolved as-of period_end_date + 45d (quarterly publication lag, used for "
+            "BOTH FQ and FA to keep the shares-lookup anchor identical) against "
+            "m12-fqx-freefloat-v1 history via a backward as-of join. Null when "
+            "unresolved -- e.g. pre-2019-01-02 freefloat coverage boundary, or ticker "
+            "has no eligible snapshot -- never silently clamped to nearest available."
+        ),
+    )
+    eps_source: str = Field(
+        "vendor_coalesced",
+        description="'recomputed' when eps_basic used the NPAT/shares_outstanding_pit recompute, else 'vendor_coalesced'",
+    )
+    bvps_source: str = Field(
+        "vendor_coalesced",
+        description="'recomputed' when bvps used the equity/shares_outstanding_pit recompute, else 'vendor_coalesced'",
+    )
+    roe_source: str = Field(
+        "vendor_coalesced",
+        description="'recomputed' when roe used the TTM-NPAT/avg-equity recompute, else 'vendor_coalesced'",
+    )
+    roa_source: str = Field(
+        "vendor_coalesced",
+        description="'recomputed' when roa used the TTM-NPAT/avg-assets recompute, else 'vendor_coalesced'",
+    )
+
     # General-only
     net_sales: float | None = None
     gross_profit: float | None = None
@@ -150,6 +205,7 @@ class FundamentalsQuarterly(HlppNormalizedBase):
     depreciation_amortization: float | None = None
     cost_of_sales: float | None = None
     inventory: float | None = None
+    accounts_receivable: float | None = None
     accounts_payable: float | None = None
     short_term_investments: float | None = None
 
@@ -168,6 +224,13 @@ class FundamentalsQuarterly(HlppNormalizedBase):
     # Bank Wave-4 NIM-decomposition: gross interest income/expense (P2.6)
     interest_income: float | None = None
     interest_expense: float | None = None
+    # Bank fq-D4: fee/credit-provision + regulatory NPL line-items
+    fee_commission_income: float | None = None
+    net_fee_income: float | None = None
+    credit_provision_expense: float | None = None
+    non_performing_loans: float | None = Field(
+        None, description="Regulatory NPL balance (Circular-11 groups 3-5), distinct from npl_ratio"
+    )
 
     # Securities-only
     brokerage_revenue: float | None = None
@@ -175,6 +238,13 @@ class FundamentalsQuarterly(HlppNormalizedBase):
     margin_lending_interest_income: float | None = None
     margin_loans_outstanding: float | None = None
     trading_securities: float | None = None
+    # Securities fq-D4: revenue-mix + balance-sheet line-items
+    advisory_revenue: float | None = None
+    agency_underwriting_revenue: float | None = None
+    operating_revenue: float | None = None
+    client_deposits: float | None = None
+    available_for_sale_securities: float | None = None
+    held_to_maturity_securities: float | None = None
 
     # Insurance-only
     gross_written_premium: float | None = None
@@ -182,6 +252,15 @@ class FundamentalsQuarterly(HlppNormalizedBase):
     claims_incurred: float | None = None
     combined_ratio: float | None = None
     solvency_capital_ratio: float | None = None
+    # Insurance fq-D4: underwriting + technical-reserve line-items
+    premium_earned: float | None = None
+    claims_paid: float | None = None
+    claims_reserves: float | None = None
+    underwriting_expenses: float | None = None
+    underwriting_result: float | None = None
+    investment_income: float | None = None
+    technical_reserves: float | None = None
+    unexpired_risk_reserve: float | None = None
 
     # Fund-only
     total_aum: float | None = None
@@ -254,8 +333,18 @@ class ReportTextNormalized(HlppNormalizedBase):
         description=(
             "Row-level provenance struct-hash (Utf8) set by stamp_silver_per_row. "
             "NOT a sha256 of body_text — the column is overwritten by the stamping layer "
-            "with a polars struct-hash. If a content digest of body_text is needed, "
-            "add a separate field (e.g. body_text_sha256)."
+            "with a polars struct-hash, so it can change across rebuilds of the same "
+            "document even when body_text is byte-identical. Use observation_id (the "
+            "real dedup key) or body_text_hash for cross-rebuild same-content detection."
+        ),
+    )
+    body_text_hash: str | None = Field(
+        None,
+        description=(
+            "SHA-256 of body_text alone (RPT-D4), deliberately independent of the "
+            "shared ADR-022 content_hash above. Null for empty body_text (a blank "
+            "extraction never collides with another blank extraction under a shared "
+            "hash value)."
         ),
     )
     extracted_via: Literal["pdfplumber", "html_summary", "html_body"] = "pdfplumber"
@@ -504,6 +593,62 @@ class FundamentalsAnnual(HlppNormalizedBase):
     bvps: float | None = None
     roa: float | None = None
 
+    # Per-share recompute audit columns (P11 Phương án A, hlpp_pipelines.l1b.
+    # pershare_recompute; general/bank/securities/insurance -- excluded for fund,
+    # whose per-share economics are NAV/unit-based). eps_basic/bvps/roe/roa above
+    # are COALESCED: field_recomputed when the recompute's own inputs (NPAT/
+    # equity/assets/shares_outstanding_pit) resolved, else field_vendor unmodified
+    # -- a resolve-miss on this arc's own inputs never blanks a real vendor value.
+    eps_basic_vendor: float | None = Field(
+        None, description="Vendor-reported eps_basic, preserved unmodified for audit (P11 coalesce)"
+    )
+    bvps_vendor: float | None = Field(
+        None, description="Vendor-reported bvps, preserved unmodified for audit (P11 coalesce)"
+    )
+    roe_vendor: float | None = Field(
+        None, description="Vendor-reported roe, preserved unmodified for audit (P11 coalesce)"
+    )
+    roa_vendor: float | None = Field(
+        None, description="Vendor-reported roa, preserved unmodified for audit (P11 coalesce)"
+    )
+    eps_diluted_recomputed: float | None = Field(
+        None,
+        description=(
+            "Always null -- eps_diluted is never recomputed (no dilutive-instrument "
+            "data anywhere in the lake for any surface); vendor eps_diluted passes "
+            "through completely untouched. Kept as an explicit audit column per the "
+            "coalesce convention (P11 point 3)."
+        ),
+    )
+    shares_outstanding_pit: float | None = Field(
+        None,
+        description=(
+            "PIT-per-period shares outstanding used for the eps_basic/bvps recompute, "
+            "resolved as-of period_end_date + 45d (quarterly publication lag, used for "
+            "BOTH FQ and FA to keep the shares-lookup anchor identical -- 2026-07-21 "
+            "fix, see FA docstring point 2b) against m12-fqx-freefloat-v1 history via "
+            "a backward as-of join. Null when unresolved -- e.g. pre-2019-01-02 "
+            "freefloat coverage boundary, or ticker has no eligible snapshot -- never "
+            "silently clamped to nearest available."
+        ),
+    )
+    eps_source: str = Field(
+        "vendor_coalesced",
+        description="'recomputed' when eps_basic used the NPAT/shares_outstanding_pit recompute, else 'vendor_coalesced'",
+    )
+    bvps_source: str = Field(
+        "vendor_coalesced",
+        description="'recomputed' when bvps used the equity/shares_outstanding_pit recompute, else 'vendor_coalesced'",
+    )
+    roe_source: str = Field(
+        "vendor_coalesced",
+        description="'recomputed' when roe used the TTM-NPAT/avg-equity recompute, else 'vendor_coalesced'",
+    )
+    roa_source: str = Field(
+        "vendor_coalesced",
+        description="'recomputed' when roa used the TTM-NPAT/avg-assets recompute, else 'vendor_coalesced'",
+    )
+
     # General-only
     net_sales: float | None = None
     gross_profit: float | None = None
@@ -526,6 +671,7 @@ class FundamentalsAnnual(HlppNormalizedBase):
     depreciation_amortization: float | None = None
     cost_of_sales: float | None = None
     inventory: float | None = None
+    accounts_receivable: float | None = None
     accounts_payable: float | None = None
     short_term_investments: float | None = None
 
@@ -544,6 +690,13 @@ class FundamentalsAnnual(HlppNormalizedBase):
     # Bank Wave-4 NIM-decomposition: gross interest income/expense (P2.6)
     interest_income: float | None = None
     interest_expense: float | None = None
+    # Bank fq-D4: fee/credit-provision + regulatory NPL line-items
+    fee_commission_income: float | None = None
+    net_fee_income: float | None = None
+    credit_provision_expense: float | None = None
+    non_performing_loans: float | None = Field(
+        None, description="Regulatory NPL balance (Circular-11 groups 3-5), distinct from npl_ratio"
+    )
 
     # Securities-only
     brokerage_revenue: float | None = None
@@ -551,6 +704,13 @@ class FundamentalsAnnual(HlppNormalizedBase):
     margin_lending_interest_income: float | None = None
     margin_loans_outstanding: float | None = None
     trading_securities: float | None = None
+    # Securities fq-D4: revenue-mix + balance-sheet line-items
+    advisory_revenue: float | None = None
+    agency_underwriting_revenue: float | None = None
+    operating_revenue: float | None = None
+    client_deposits: float | None = None
+    available_for_sale_securities: float | None = None
+    held_to_maturity_securities: float | None = None
 
     # Insurance-only
     gross_written_premium: float | None = None
@@ -558,6 +718,15 @@ class FundamentalsAnnual(HlppNormalizedBase):
     claims_incurred: float | None = None
     combined_ratio: float | None = None
     solvency_capital_ratio: float | None = None
+    # Insurance fq-D4: underwriting + technical-reserve line-items
+    premium_earned: float | None = None
+    claims_paid: float | None = None
+    claims_reserves: float | None = None
+    underwriting_expenses: float | None = None
+    underwriting_result: float | None = None
+    investment_income: float | None = None
+    technical_reserves: float | None = None
+    unexpired_risk_reserve: float | None = None
 
     # Fund-only
     total_aum: float | None = None
@@ -672,6 +841,35 @@ class NewsHeadlineNormalized(HlppNormalizedBase):
         ),
     )
     language: str = Field("vi", description="ISO 639-1 language code of the headline")
+
+    # News revival byproduct (2026-07 wire-first revival; 3 cols)
+    extraction_status: str = Field(
+        "OK",
+        description=(
+            "Extraction outcome for this row, currently always 'OK' (no error path "
+            "populates a different value yet — kept as a plain str, not a Literal, "
+            "so a future error-path addition is additive rather than a contract break)."
+        ),
+    )
+    published_at_confidence: str = Field(
+        "none",
+        description=(
+            "Confidence marker for published_at's accuracy, sourced from the "
+            "collector's raw article extra['published_at_confidence'] when present, "
+            "else 'none' (published_at absent/unreliable)."
+        ),
+    )
+    dedup_content_hash: str | None = Field(
+        None,
+        description=(
+            "SHA-256 over the whitespace-normalized (headline, summary) pair — url "
+            "EXCLUDED — so the same story re-published under a different url "
+            "collapses to one hash (basis for cross-source clustering / "
+            "cluster_source_count). Computed AFTER provenance stamping, so it is "
+            "NOT part of the ADR-022 content_hash payload struct. Distinct from "
+            "content_hash (which fingerprints the whole row, url included)."
+        ),
+    )
 
 
 __all__ = [

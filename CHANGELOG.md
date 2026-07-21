@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.7 - 2026-07-21
+
+**CONTRACTS-B09-D1: sync 4 pydantic models to already-shipped on-disk columns (G2-B09 contract-drift close)**
+
+Ground-truthed against the real on-disk `~/HLPP-HOT/NORMALIZED` lake (latest partition per store) — every field below was already being written by the builder and physically present on disk; the pydantic model simply never declared it, so G2-B09 (`hlpp_pipelines.qa.bells_contract`, `pydantic_normalized` mechanism) RANG contract-drift for 4 stores.
+
+- **FIX `FundamentalsQuarterly` / `FundamentalsAnnual`** (both, identically): add 29 fields ground-truthed against the live lake —
+  - 10 per-share recompute audit columns (P11 Phương án A, `hlpp_pipelines.l1b.pershare_recompute`): `eps_basic_vendor`, `bvps_vendor`, `roe_vendor`, `roa_vendor`, `eps_diluted_recomputed`, `shares_outstanding_pit`, `eps_source`, `bvps_source`, `roe_source`, `roa_source`.
+  - 1 general-surface field: `accounts_receivable`.
+  - 4 bank-surface fields (fq-D4): `fee_commission_income`, `net_fee_income`, `credit_provision_expense`, `non_performing_loans`.
+  - 6 securities-surface fields (fq-D4): `advisory_revenue`, `agency_underwriting_revenue`, `operating_revenue`, `client_deposits`, `available_for_sale_securities`, `held_to_maturity_securities`.
+  - 8 insurance-surface fields (fq-D4): `premium_earned`, `claims_paid`, `claims_reserves`, `underwriting_expenses`, `underwriting_result`, `investment_income`, `technical_reserves`, `unexpired_risk_reserve`.
+- **FIX `NewsHeadlineNormalized`**: add 3 news-revival-byproduct fields — `extraction_status`, `published_at_confidence`, `dedup_content_hash`.
+- **FIX `ReportTextNormalized`**: add `body_text_hash` (SHA-256 of `body_text` alone, RPT-D4 — distinct from the shared ADR-022 `content_hash`).
+
+All additive/backward-compatible (every new field is `Optional`/has a default). `l1b_bank_credit_quality`'s missing `business_date` (also flagged under this ticket) is declared on a `hlpp_pipelines`-local `SilverContract` dataclass, not a pydantic model in this package — fixed directly in `hlpp-pipelines/src/hlpp_pipelines/contracts/l1b_bank_credit_quality.py`, out of scope for this changelog.
+
 ## 0.5.3 - 2026-05-29
 
 **Inline validation alignment: business_date + contract field fixes (Gate 6.1 / Decision-A)**

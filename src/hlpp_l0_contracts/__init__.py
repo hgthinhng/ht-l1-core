@@ -12,7 +12,7 @@ idempotency, stamping, sources_config, backfillable, source_status.
 """
 
 from . import schemas, universe, validators, git_meta  # noqa: F401
-__version__ = "0.5.6"
+__version__ = "0.5.7"
 
 from .browser_fetch import (
     BrowserFetchAuthError,
