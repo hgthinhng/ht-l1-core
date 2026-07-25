@@ -49,6 +49,54 @@ sources:
     assert validate_source(sources[0].model_dump()).name == "fred"
 
 
+def test_load_sources_yaml_accepts_null_last_verified_at(tmp_path: Path) -> None:
+    """A registered-but-never-verified source is a real state, not a schema error.
+
+    Push-stream sources must be registered active before their first live session
+    (an unrecorded session cannot be recovered), so they have no verified timestamp
+    to declare until that session runs.
+    """
+    from hlpp_l0_contracts.sources_config import load_sources_yaml
+
+    path = write_yaml(
+        tmp_path,
+        """
+sources:
+  - name: stream-not-yet-run
+    url: vendor://stream?mode=push
+    ops:
+      status: active
+    disabled_reason: null
+    last_verified_at: null
+""",
+    )
+
+    sources = load_sources_yaml(path)
+
+    assert len(sources) == 1
+    assert sources[0].last_verified_at is None
+
+
+def test_load_sources_yaml_still_rejects_missing_last_verified_at(tmp_path: Path) -> None:
+    """Nullable must not decay into optional: the key itself stays mandatory."""
+    from hlpp_l0_contracts.sources_config import load_sources_yaml
+
+    path = write_yaml(
+        tmp_path,
+        """
+sources:
+  - name: fred
+    url: https://example.com/fred
+    ops:
+      status: active
+    disabled_reason: null
+""",
+    )
+
+    with pytest.raises(ValidationError, match="last_verified_at"):
+        load_sources_yaml(path)
+
+
 def test_load_sources_yaml_rejects_entry_missing_ops(tmp_path: Path) -> None:
     from hlpp_l0_contracts.sources_config import load_sources_yaml
 

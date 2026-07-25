@@ -7,10 +7,24 @@ import tomllib
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_pyproject_version_is_0_5_5() -> None:
-    pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
+def test_pyproject_version_matches_latest_changelog_entry() -> None:
+    """Pin the version to the CHANGELOG instead of to a literal.
 
-    assert pyproject["project"]["version"] == "0.5.5"
+    The old form hardcoded "0.5.5" and had been failing since the 0.5.6 release,
+    so it stopped guarding anything and just made the suite permanently red.
+    Deriving the expectation from the CHANGELOG keeps the real invariant: you do
+    not get to bump the version without writing down what changed.
+    """
+    pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
+    changelog = (PROJECT_ROOT / "CHANGELOG.md").read_text()
+
+    latest = next(
+        line.removeprefix("## ").split(" - ")[0].strip()
+        for line in changelog.splitlines()
+        if line.startswith("## ")
+    )
+
+    assert pyproject["project"]["version"] == latest
 
 
 def test_changelog_records_0_1_5_protocol_release() -> None:

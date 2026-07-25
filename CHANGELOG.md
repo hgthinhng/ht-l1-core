@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.8 - 2026-07-25
+
+**`SourceEntry.last_verified_at` becomes nullable (still required)**
+
+- **FIX `SourceEntry`**: `last_verified_at: datetime` -> `datetime | None`. The key stays mandatory, exactly like the sibling `disabled_reason: str | None` right above it, so nobody can forget to state it; what changes is that an explicit `null` is now a legal value meaning "registered, never verified yet".
+
+  That state is real rather than a placeholder. Push-stream sources have to be registered active *before* their first live session, because a session nobody records cannot be recovered afterwards, so there is genuinely no verified timestamp to declare until the session runs. `l1a/fqx/sources.yaml` hit this on 2026-07-25 with `m12-fqx-bidask-v1` and `m12-fqx-orderbook-changes-v1`: the whole file stopped validating, not just those two entries, because `load_sources_yaml` validates the document as a unit.
+
+  This aligns the pydantic model with the rest of the codebase, which already treats null as legitimate: `l1a/research/contracts/reports_v1.py` declares the same column `nullable=True, required=True`, and several research collectors already emit `last_verified_at: None`.
+
+- **TEST**: added coverage for both halves of the guarantee — explicit `null` is accepted, and an entry that omits the key entirely is still rejected, so "nullable" cannot quietly decay into "optional".
+
 ## 0.5.7 - 2026-07-21
 
 **CONTRACTS-B09-D1: sync 4 pydantic models to already-shipped on-disk columns (G2-B09 contract-drift close)**

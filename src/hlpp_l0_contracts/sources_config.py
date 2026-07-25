@@ -32,7 +32,16 @@ class SourceEntry(BaseModel):
     url: str
     ops: SourceOps
     disabled_reason: str | None
-    last_verified_at: datetime
+    # Nullable but REQUIRED, same shape as disabled_reason above: the key must be
+    # present so nobody can forget to state it, while an explicit null records the
+    # legitimate "registered but never verified yet" state. That state is real for
+    # push-stream sources, which must be registered active BEFORE the first live
+    # session (an unrecorded session is gone permanently), so there is no verified
+    # timestamp to give until that session runs. Aligns with the sibling contract
+    # l1a/research/contracts/reports_v1.py, which already declares this column
+    # nullable=True + required=True, and with the research collectors that already
+    # emit last_verified_at: None.
+    last_verified_at: datetime | None
 
 
 class SourcesYaml(BaseModel):
