@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.9 - 2026-09-02
+
+**`NewsHeadlineNormalized.source_name` — optional publisher display name**
+
+- **ADD `NewsHeadlineNormalized`**: new field `source_name: str | None = Field(default=None, ...)`, placed right after `source_id`. Optional and nullable so existing L1b partitions without this column keep validating under `frozen=True, extra="forbid"`.
+
+  `source_id` already carries the machine identifier (`'hose_news'` / `'cafef_per_ticker'` / RSS feed id), but no field carried the human-readable publisher name (e.g. `'CafeF'`, `'HOSE'`, or the RSS `<source>` title). Downstream L1b builders need to emit this to display attribution without joining back to a source registry.
+
+- **TEST**: added `tests/test_news_headline_source_name.py` asserting `source_name` is present in `model_fields` with a `None` default.
+
 ## 0.5.8 - 2026-07-25
 
 **`SourceEntry.last_verified_at` becomes nullable (still required)**

@@ -808,6 +808,10 @@ class NewsHeadlineNormalized(HlppNormalizedBase):
             "RSS feed id (e.g. 'vnexpress_kinhdoanh')"
         ),
     )
+    source_name: str | None = Field(
+        default=None,
+        description="Publisher display name (e.g. 'CafeF', 'HOSE', RSS <source> title). None when unknown.",
+    )
 
     # Headline content
     headline: str = Field(..., min_length=1, description="Article title / headline text")
